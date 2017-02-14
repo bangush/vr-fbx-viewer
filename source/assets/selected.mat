@@ -1,0 +1,16 @@
+{
+	"Material": {
+		"Shader": "assets/selected.isl",
+		"MaterialValues": {
+			"Value": {
+				"Name": "diffuse_map",
+				"Type": "tex2D",
+				"Value": "",
+				"WrapU": "Repeat",
+				"WrapV": "Repeat",
+				"MinFilter": "Anisotropic",
+				"MagFilter": "Anisotropic"
+			}
+		}
+	}
+}

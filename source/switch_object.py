@@ -36,7 +36,7 @@ selected = {"n": None, "m": None}
 def check_switch_objects(scn, scene_simple_graphic, cam, use_vr):
 	global button_pressed, selected_material
 	if selected_material is None:   # load the selected material
-		selected_material = plus.LoadMaterial("selected.mat")
+		selected_material = plus.LoadMaterial("assets/selected.mat")
 
 	controller0 = gs.GetInputSystem().GetDevice("openvr_controller_0")
 
@@ -71,7 +71,7 @@ def check_switch_objects(scn, scene_simple_graphic, cam, use_vr):
 			click_on_switch = True
 
 	if pos_laser is not None:
-		hit, trace = scn.GetPhysicSystem().Raycast(pos_laser, dir_laser)
+		hit, trace = scn.GetPhysicSystem().Raycast(pos_laser, dir_laser, 1)
 		if hit:
 			helper_2d.draw_line(scene_simple_graphic, pos_laser, trace.GetPosition(), gs.Color(238 / 255, 235 / 255, 92 / 255))
 			if not use_vr:

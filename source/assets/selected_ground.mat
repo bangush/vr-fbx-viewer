@@ -1,0 +1,12 @@
+{
+	"Material": {
+		"Shader": "assets/selected_ground.isl",
+		"MaterialValues": {
+			"Value": {
+				"Name": "pos_touched",
+				"Type": "vec3",
+				"Value": "vec3(0.0, 0.0, 0.0)"
+			}
+		}
+	}
+}

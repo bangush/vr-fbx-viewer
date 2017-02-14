@@ -1,13 +1,24 @@
 import gs
 import camera
+import plugins_loader
 import material_gui
 import switch_object
 import vr_controller
 import os
+import sys
 import json
 import subprocess
-from tkinter import *
-from tkinter.filedialog import askopenfilename
+import argparse
+
+# parse arguments
+parser = argparse.ArgumentParser(description='Load the scene.')
+parser.add_argument('-s', '--scene', help='Scene', default="")
+
+try:
+	args = parser.parse_args()
+except:
+	print("Can't parse args: %s" % (','.join(map(str, sys.exc_info()))))
+	args = None
 
 # mount the system file driver
 gs.MountFileDriver(gs.StdFileDriver())
@@ -18,6 +29,7 @@ gs.LoadPlugins()
 
 plus = gs.GetPlus()
 plus.CreateWorkers()
+plus.AudioInit()
 
 font = gs.RasterFont("@core/fonts/default.ttf", 16)
 
@@ -39,8 +51,12 @@ sky_script = None
 scene_simple_graphic = None
 cam = None
 authorise_ground_node = None
-authorise_ground_mat = plus.LoadMaterial("selected_ground.mat")
+authorise_ground_mat = plus.LoadMaterial("assets/selected_ground.mat")
 openvr_frame_renderer = None
+
+plugins = plugins_loader.get_plugins()
+for i in plugins.keys():
+	print("Loading plugin " + i)
 
 
 def create_new_scene():
@@ -69,7 +85,7 @@ def create_new_scene():
 
 	# scn.GetPhysicSystem().SetDebugVisuals(True)
 
-	vr_controller.clear_controllers()
+	vr_controller.clear_controllers(scn)
 
 	# add sky
 	if show_sky:
@@ -91,21 +107,21 @@ def create_new_scene():
 
 fbx_converter_ret_val = 0
 camera_handler = camera.Camera()
-current_filename_fbx = ""
+current_filename_scn = ""
 show_fps = True
 show_sky = True
 
 
 # load param
 def load_params():
-	global current_filename_fbx, show_sky, show_fps
+	global current_filename_scn, show_sky, show_fps
 	if os.path.exists('save.txt'):
 		with open('save.txt', 'r') as outfile:
 			save = json.load(outfile)
 			camera_handler.set_speed(save["speed"])
 			camera_handler.set_rot_speed(save["rot_speed"])
-			if "filename_fbx" in save:
-				current_filename_fbx = save["filename_fbx"]
+			if "filename_scn" in save:
+				current_filename_scn = save["filename_scn"]
 			if "show_sky" in save:
 				show_sky = save["show_sky"]
 			if "show_fps" in save:
@@ -116,7 +132,7 @@ def save_params():
 	# save param
 	save = {"speed": camera_handler.get_speed(),
 	        "rot_speed": camera_handler.get_rot_speed(),
-	        "filename_fbx": current_filename_fbx,
+	        "filename_scn": current_filename_scn,
 	        "show_sky": show_sky,
 	        "show_fps": show_fps}
 	with open('save.txt', 'w') as outfile:
@@ -124,7 +140,12 @@ def save_params():
 
 
 def load_new_scene(filename):
-	global current_filename_fbx, authorise_ground_node, authorise_ground_geo
+	global current_filename_scn, authorise_ground_node, authorise_ground_geo
+
+	if getattr(sys, 'frozen', False):
+		os.chdir(os.path.dirname(sys.executable))
+	else:
+		os.chdir(os.path.dirname(os.path.realpath(__file__)))
 
 	# create new scene
 	create_new_scene()
@@ -134,8 +155,9 @@ def load_new_scene(filename):
 		return
 
 	# load new scene
-	scn.Load(filename, gs.SceneLoadContext(plus.GetRenderSystem()))
 	gs.MountFileDriver(gs.StdFileDriver(os.path.dirname(filename)))
+	gs.MountFileDriver(gs.StdFileDriver(os.path.dirname(filename)), "export")
+	scn.Load(filename, gs.SceneLoadContext(plus.GetRenderSystem()))
 
 	# call twice to be sure it's loaded
 	plus.UpdateScene(scn, gs.time(1.0/60))
@@ -149,7 +171,9 @@ def load_new_scene(filename):
 		p = authorise_ground_node.GetTransform().GetPosition()
 		p.y += 0.01
 		authorise_ground_node.GetTransform().SetPosition(p)
-		authorise_ground_node.AddComponent(gs.MakeRigidBody())
+		rb = gs.MakeRigidBody()
+		rb.SetCollisionLayer(2)
+		authorise_ground_node.AddComponent(rb)
 		mesh_col = gs.MakeMeshCollision()
 		mesh_col.SetGeometry(gs.LoadCoreGeometry(authorise_ground_node.GetObject().GetGeometry().GetName()))
 		mesh_col.SetMass(0)
@@ -159,14 +183,24 @@ def load_new_scene(filename):
 
 	# move the camera to see the fbx entirely
 	camera.reset_view(scn, cam, camera_handler, openvr_frame_renderer)
-	current_filename_fbx = filename
+	current_filename_scn = filename
+
+	scn.SetCurrentCamera(cam)
 
 	# create the list of object to switch
 	switch_object.load_switch_object(scn)
 
+	vr_controller.update_controller(scn)
+
 
 def load_fbx(filename):
 	global fbx_converter_ret_val
+	if getattr(sys, 'frozen', False):
+		current_path = os.path.dirname(sys.executable)
+	else:
+		current_path = os.path.dirname(os.path.realpath(__file__))
+
+	os.chdir(current_path)
 
 	if not os.path.exists(filename):
 		print("{0} doesn't exist".format(filename))
@@ -186,7 +220,7 @@ def load_fbx(filename):
 
 	print("command line converted:")
 	print(filename)
-	command_line = "fbx_converter_bin \"{0}\" -fix-geometry-orientation -o export/ -material-policy overwrite -geometry-policy overwrite -texture-policy overwrite -scene-policy overwrite -detect-geometry-instances -calculate-normal-if-missing -calculate-tangent-if-missing -finalizer-script fbx_finalizer_script.lua".format(filename)
+	command_line = "fbx_converter\\fbx_converter_bin \"{0}\" -fix-geometry-orientation -o export/ -material-policy overwrite -geometry-policy overwrite -texture-policy overwrite -scene-policy overwrite -detect-geometry-instances -calculate-normal-if-missing -calculate-tangent-if-missing -finalizer-script \"{1}\"".format(filename, os.path.join(current_path, "fbx_converter\\fbx_finalizer_script.lua"))
 	print(command_line)
 	fbx_converter_ret_val = subprocess.call(command_line, shell=True)
 
@@ -194,8 +228,14 @@ def load_fbx(filename):
 
 # load param from previous session
 load_params()
+
+if args is not None and args.scene != "":
+	current_filename_scn = args.scene
+
 # load if there is a previous saved fbx
-load_new_scene(current_filename_fbx)
+load_new_scene(current_filename_scn)
+
+plus.SetBlend2D(gs.BlendAlpha)
 
 
 def draw_fps(scn, gui, scene_simple_graphic, use_vr, dt_sec):
@@ -212,64 +252,88 @@ def draw_fps(scn, gui, scene_simple_graphic, use_vr, dt_sec):
 	gui.Text(fps_text)
 
 
+def uninit():
+	print("save and quit")
+	save_params()
+	print("save")
+
+	if openvr_frame_renderer is not None:
+		openvr_frame_renderer.Close(plus.GetRenderSystem())
+
+	plus.GetMixerAsync().Close()
+	#
+	# plus.UninitExtern()
+	# plus.RenderUninit()
+
+	plus.GetRendererAsync().Sync()
+	print("uninit render")
+	sys.exit(0)
+
+
 while not plus.IsAppEnded(plus.EndOnDefaultWindowClosed): #plus.EndOnEscapePressed |
 	dt_sec = plus.UpdateClock()
 
-	if gui.Begin("GUI"):
-		if fbx_converter_ret_val:
-			gui.Text("There is a bug in the convert FBX, look at the log !!")
+	if all(i.authorise_show_gui() if hasattr(i, "authorise_show_gui") else True for i in plugins.values()):
+		if gui.Begin("GUI"):
+			if gui.Button("Quit"):
+				uninit()
 
-		camera_handler.set_speed(gui.SliderFloat("Cam Speed", camera_handler.get_speed(), 0, 50)[1])
-		camera_handler.set_rot_speed(gui.SliderFloat("Cam Rot Speed", camera_handler.get_rot_speed(), 0, 50)[1])
+			if fbx_converter_ret_val:
+				gui.Text("There is a bug in the convert FBX, look at the log !!")
 
-		if gui.Button("OpenFbx"):
-			root = Tk()
-			root.filename = askopenfilename(title="Select a fbx", filetypes=(("fbx files", "*.fbx"), ("all files", "*.*")))
-			root.withdraw()
+			camera_handler.set_speed(gui.SliderFloat("Cam Speed", camera_handler.get_speed(), 0, 50)[1])
+			camera_handler.set_rot_speed(gui.SliderFloat("Cam Rot Speed", camera_handler.get_rot_speed(), 0, 50)[1])
 
-			if root.filename != "":
-				load_fbx(os.path.normpath(root.filename))
+			if gui.Button("OpenFbx"):
+				filename = gs.OpenFileDialog("Select a fbx", "*.fbx;*.FBX;*.*", "")[1]
+				if filename != "":
+					load_fbx(os.path.normpath(filename))
 
-		if gui.Button("OpenScn"):
-			root = Tk()
-			root.filename = askopenfilename(title="Select a scn", filetypes=(("scn files", "*.scn"), ("scn bin files", "*.bin"), ("all files", "*.*")))
-			root.withdraw()
+			if gui.Button("OpenScn"):
+				filename = gs.OpenFileDialog("Select a scn", "*.scn;*.*", "")[1]
+				if filename != "":
+					load_new_scene(os.path.normpath(filename))
 
-			if root.filename != "":
-				load_new_scene(os.path.normpath(root.filename))
+			if gui.Button("Reset View"):
+				camera.reset_view(scn, cam, camera_handler, openvr_frame_renderer)
 
-		if gui.Button("Reset View"):
-			camera.reset_view(scn, cam, camera_handler, openvr_frame_renderer)
+			show_sky = gui.Checkbox("ShowSky", show_sky)
+			if (sky_script is not None and not show_sky) or	(sky_script is None and show_sky):
+				load_new_scene(current_filename_scn)
 
-		show_sky = gui.Checkbox("ShowSky", show_sky)
-		if (sky_script is not None and not show_sky) or\
-				(sky_script is None and show_sky):
-			load_new_scene(current_filename_fbx)
+			gui.SameLine()
+			show_fps = gui.Checkbox("ShowFps", show_fps)
+			if show_fps:
+				draw_fps(scn, gui, scene_simple_graphic, openvr_frame_renderer, dt_sec)
 
-		gui.SameLine()
-		show_fps = gui.Checkbox("ShowFps", show_fps)
-		if show_fps:
-			draw_fps(scn, gui, scene_simple_graphic, openvr_frame_renderer, dt_sec)
+			vr_controller.create_nodes_controller = gui.Checkbox("Show controller", vr_controller.create_nodes_controller)
+			if not vr_controller.create_nodes_controller:
+				vr_controller.clear_controllers(scn)
 
-		if gui.TreeNode("help"):
-			if openvr_frame_renderer:
-				gui.Text("Slightly press trigger: Show select switch elements")
-				gui.Text("Press Completely trigger: Switch elements")
-				gui.Text("Touch the circle: Show the teleporter")
-				gui.Text("Press the circle: Teleport to the selected place")
-			else:
-				gui.Text("SPACE: Show select switch elements")
-				gui.Text("W: Switch elements")
-				gui.Text("X: Show the teleporter")
-				gui.Text("Move: Press ZQSD")
-			gui.TreePop()
-	gui.End()
+			# update_gui plugins
+			for i in [x for x in plugins.values() if hasattr(x, "update_gui")]:
+				i.update_gui(scn, openvr_frame_renderer, gui)
+
+			# help
+			if gui.TreeNode("help"):
+				if openvr_frame_renderer:
+					gui.Text("Slightly press trigger: Show select switch elements")
+					gui.Text("Press Completely trigger: Switch elements")
+					gui.Text("Touch the circle: Show the teleporter")
+					gui.Text("Press the circle: Teleport to the selected place")
+				else:
+					gui.Text("SPACE: Show select switch elements")
+					gui.Text("W: Switch elements")
+					gui.Text("X: Show the teleporter")
+					gui.Text("Move: Press ZQSD")
+				gui.TreePop()
+		gui.End()
 
 	# # draw material gui of all nodes
 	# material_gui.draw_gui(gui, scn)
 	#
 	# if vr, draw controller
-	if openvr_frame_renderer is not None:
+	if openvr_frame_renderer is not None and all(i.authorise_update_controller() if hasattr(i, "authorise_update_controller") else True for i in plugins.values()):
 		vr_controller.update_controller(scn)
 
 	# check if object to switch
@@ -278,15 +342,24 @@ while not plus.IsAppEnded(plus.EndOnDefaultWindowClosed): #plus.EndOnEscapePress
 		camera.update_camera_teleporter(scn, scene_simple_graphic, cam, openvr_frame_renderer, authorise_ground_node)
 
 	# update camera movement
-	camera.update_camera_move(dt_sec, camera_handler, gui, cam, openvr_frame_renderer)
+	if all(i.authorise_update_camera_move() if hasattr(i, "authorise_update_camera_move") else True for i in plugins.values()):
+		camera.update_camera_move(dt_sec, camera_handler, gui, cam, openvr_frame_renderer)
 
-	plus.UpdateScene(scn, dt_sec)
-	plus.Text2D(5, 5, "Move around with QSZD, left mouse button to look around")
+	# plus.UpdateScene(scn, dt_sec)
+
+	for i in [x for x in plugins.values() if hasattr(x, "pre_update")]:
+		i.pre_update(scn, openvr_frame_renderer)
+
+	scn.Update(dt_sec)
+	scn.WaitUpdate()
+	scn.Commit()
+	scn.WaitCommit()
+
+	# update recording
+	for i in [x for x in plugins.values() if hasattr(x, "update")]:
+		i.update(scn, gui, openvr_frame_renderer)
+
+	# plus.Text2D(5, 5, "Move around with QSZD, left mouse button to look around")
 	plus.Flip()
 
-print("save and quit")
-save_params()
-print("save")
-
-plus.RenderUninit()
-print("uninit render")
+uninit()

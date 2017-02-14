@@ -19,11 +19,10 @@ def gather_extra_redist():
 
 	return out
 
-
 extra_redist = gather_extra_redist()
 
 includes      = []
-include_files = [r"C:\Anaconda3\DLLs\tcl86t.dll", r"C:\Anaconda3\DLLs\tk86t.dll", "vr_controller", "fbx_finalizer_script.lua", "fbx_converter_bin.exe", "libfbxsdk.dll", "selected.isl", "selected.mat", "selected_ground.isl", "selected_ground.mat"]+ extra_redist
+include_files = ["vr_controller", "vr_helmet", "fbx_converter", "assets", "plugins"] + extra_redist
 
 # Dependencies are automatically detected, but it might need fine tuning.
 options = {

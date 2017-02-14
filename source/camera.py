@@ -191,6 +191,9 @@ def reset_view(scn, cam, cam_handler, use_vr):
 	spawnpoint = scn.GetNode("spawnpoint_0")
 	if spawnpoint is not None:
 		cam_world = spawnpoint.GetTransform().GetWorld()
+		print("Find spawnpoint_0")
+	else:
+		print("can't find sppawnpoint_0")
 
 	if cam_world is None:
 		# move the camera to see the fbx entirely
@@ -217,6 +220,7 @@ def reset_view(scn, cam, cam_handler, use_vr):
 		# in case of no vr, up the camera to 1.75
 		if not use_vr:
 			cam_world = cam_world * gs.Matrix4.TranslationMatrix(gs.Vector3(0, 1.75, 0))
+			print("no vr: camera up to 1.75m")
 
 		d = 1
 
@@ -271,7 +275,7 @@ def update_camera_teleporter(scn, scene_simple_graphic, cam, use_vr, authorise_g
 		authorise_movement = True
 		if authorise_ground_node is not None:
 			authorise_ground_node.GetObject().GetGeometry().GetMaterial(0).SetFloat3("pos_touched", ground_pos.x, ground_pos.y, ground_pos.z)
-			hit, trace = scn.GetPhysicSystem().Raycast(ground_pos + gs.Vector3(0, 0.5, 0), gs.Vector3(0, -1, 0), 255, 1)
+			hit, trace = scn.GetPhysicSystem().Raycast(ground_pos + gs.Vector3(0, 0.5, 0), gs.Vector3(0, -1, 0), 4, 3)
 			if not hit or trace.GetNode() != authorise_ground_node:
 				authorise_movement = False
 
