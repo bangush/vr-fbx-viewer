@@ -33,7 +33,6 @@ variant {
 			vec4 cube_color = texture(cube_map, r);
 			%diffuse% = texture2D(diffuse_map, v_uv0).xyz * texture2D(self_map, v_uv1).xyz;
 			%constant% = (cube_color).xyz * cube_factor;
-			%opacity% = texture2D(diffuse_map, v_uv).w;
 		%}
 	}
 }
